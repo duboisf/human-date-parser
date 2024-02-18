@@ -364,25 +364,27 @@ fn create_duration(rule: Rule, amount: i64) -> Result<Duration, ParseError> {
             next_year - now
         }
         Rule::Month => {
+            let invalid_value = || ParseError::ValueInvalid {
+                amount: amount.to_string(),
+            };
             let now = now!();
-            let months: u32 = match amount.try_into() {
+            let total_months: u32 = match amount.try_into() {
                 Ok(months) => months,
-                Err(_) => {
-                    return Err(ParseError::ValueInvalid {
-                        amount: amount.to_string(),
-                    })
-                }
+                _ => return Err(invalid_value()),
             };
-            let next_month = match now.with_month0((now.month0() + months) % 12) {
-                Some(month) => month,
-                None => {
-                    return Err(ParseError::ValueInvalid {
-                        amount: amount.to_string(),
-                    })
-                }
+            let years = match i32::try_from(total_months / 12) {
+                Ok(years) => years,
+                _ => return Err(invalid_value())
             };
-
-            next_month - now
+            let months = total_months % 12;
+            let adjusted_date = match now.with_year(now.year() + years) {
+                Some(date) => match date.with_month0(date.month0() + months) {
+                    Some(date) => date,
+                    _ => return Err(invalid_value())
+                },
+                _ => return Err(invalid_value())
+            };
+            adjusted_date - now
         }
         Rule::Week => Duration::days(amount * 7),
         Rule::Day => Duration::days(amount),
@@ -481,12 +483,20 @@ mod tests {
         "In 5 minutes and 30 seconds" = "2010-01-01 00:05:30",
         "10 seconds ago" = "2009-12-31 23:59:50",
         "10 hours and 5 minutes ago" = "2009-12-31 13:55:00",
+        "23 hours ago" = "2009-12-31 01:00:00",
+        "24 hours ago" = "2009-12-31 00:00:00",
+        "25 hours ago" = "2009-12-30 23:00:00",
         "2 hours, 32 minutes and 7 seconds ago" = "2009-12-31 21:27:53",
         "1 years, 2 months, 3 weeks, 5 days, 8 hours, 17 minutes and 45 seconds ago" =
             "2008-10-07 16:42:15",
         "1 year, 1 month, 1 week, 1 day, 1 hour, 1 minute and 1 second ago" = "2008-11-23 22:58:59",
         "A year ago" = "2009-01-01 00:00:00",
+        "2 years ago" = "2008-01-02 00:00:00", // 2008 is a leap year
         "A month ago" = "2009-12-01 00:00:00",
+        "12 months ago" = "2009-01-01 00:00:00",
+        "13 months ago" = "2008-12-01 00:00:00",
+        "23 months ago" = "2008-02-02 00:00:00", // 2008 is a leap year
+        "25 months ago" = "2007-12-02 00:00:00", // 2008 is a leap year
         "A week ago" = "2009-12-25 00:00:00",
         "A day ago" = "2009-12-31 00:00:00",
         "An hour ago" = "2009-12-31 23:00:00",
